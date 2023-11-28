@@ -26,7 +26,11 @@ vts = pyvts.vts(plugin_info=plugin_info)
 
 twitch = None
 
-async def refund(data:ChannelPointsCustomRewardRedemptionAddEvent):
+async def accept(data):
+    await twitch.update_redemption_status(data['subscription']['condition']['broadcaster_user_id'],data['subscription']['condition']['reward_id'], data['event']['id'],CustomRewardRedemptionStatus.FULFILLED)
+
+
+async def refund(data):
      await twitch.update_redemption_status(data['subscription']['condition']['broadcaster_user_id'],data['subscription']['condition']['reward_id'], data['event']['id'],CustomRewardRedemptionStatus.CANCELED)
 
 # listen_channel_points_custom_reward_redemption_add
@@ -79,6 +83,7 @@ async def Darkbyte(data: ChannelPointsCustomRewardRedemptionAddEvent):
     )
 
     #release our locks
+    await accept(data)
     lock.release() 
 
 
@@ -102,14 +107,24 @@ async def customHairColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
     x = re.search("[0-9]{1,3},[0-9]{1,3},[0-9]{1,3}",  data['event']['user_input']) 
 
     try:
-        rgbString = x.string#r,g,b 69,69,69
+        rgbString = x.string
+        colors = rgbString.split(',')
+        red = int(colors[0])
+        green = int(colors[1])
+        blue = int(colors[2])
     except:
+        #auto cancel code if malformed
         await refund(data)
         print("invalid code")
         lock.release()
         return
 
-    colors = rgbString.split(',')
+    if(red >255 or red <0 or green > 255 or green < 0 or blue >255 or blue <0):
+        await refund(data)
+        print("invalid code")
+        lock.release()
+        return
+
 
     total_sec = 300
     splits = 300
@@ -123,7 +138,7 @@ async def customHairColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
     #jank solution, no clue why it works
     for i in range(splits):
         await vts.request(
-            vts.vts_request.ColorTintRequest(red=colors[0],green=colors[1],blue=colors[2],name_exact=hair_names + ear_names)
+            vts.vts_request.ColorTintRequest(red=red,green=green,blue=blue,name_exact=hair_names + ear_names)
         )
         
         time.sleep(time_per_split)
@@ -131,9 +146,9 @@ async def customHairColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
     await vts.request(
         vts.vts_request.ColorTintRequest(red=255,green=255,blue=255,name_exact=hair_names + ear_names)
     )
-    lock.release() 
 
-    print("Done")
+    await accept(data)
+    lock.release() 
 
 async def customEyeColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
     data = data.to_dict()
@@ -155,6 +170,10 @@ async def customEyeColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
 
     try:
         rgbString = x.string
+        colors = rgbString.split(',')
+        red = int(colors[0])
+        green = int(colors[1])
+        blue = int(colors[2])
     except:
         #auto cancel code if malformed
         await refund(data)
@@ -162,7 +181,11 @@ async def customEyeColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
         lock.release()
         return
 
-    colors = rgbString.split(',')
+    if(red >255 or red <0 or green > 255 or green < 0 or blue >255 or blue <0):
+        await refund(data)
+        print("invalid code")
+        lock.release()
+        return
 
     total_sec = 300
     splits = 300
@@ -173,15 +196,16 @@ async def customEyeColor(data: ChannelPointsCustomRewardRedemptionAddEvent):
 
     for i in range(splits):
         await vts.request(
-            vts.vts_request.ColorTintRequest(red=colors[0],green=colors[1],blue=colors[2],name_exact=eye_names)
+            vts.vts_request.ColorTintRequest(red=red,green=green,blue=blue,name_exact=eye_names)
         )
         time.sleep(time_per_split)
 
     await vts.request(
-            vts.vts_request.ColorTintRequest(red=255,green=255,blue=255,name_exact=eye_names)
-        )
+        vts.vts_request.ColorTintRequest(red=255,green=255,blue=255,name_exact=eye_names)
+    )
 
     #release eye lock
+    await accept(data)
     lock.release() 
 
 
@@ -200,10 +224,8 @@ async def run():
     eventsub = EventSubWebsocket(twitch)
     eventsub.start()
 
-    await twitch.create_custom_reward(user.id,"Darkbyte!",999999)
-
     #listen for redeems
-    await eventsub.listen_channel_points_custom_reward_redemption_add(user.id, callback=Darkbyte, reward_id='1f1552b3-a507-4553-989a-7738d3371ed3')
+    await eventsub.listen_channel_points_custom_reward_redemption_add(user.id, callback=Darkbyte, reward_id='8e4cb221-ccbf-477d-a7c6-993575c21a72')
     await eventsub.listen_channel_points_custom_reward_redemption_add(user.id, callback=customHairColor, reward_id='6d07918a-1aa0-4337-947b-f2303e19af48')
     await eventsub.listen_channel_points_custom_reward_redemption_add(user.id, callback=customEyeColor, reward_id='f049cb4d-9199-4178-9165-032faf81e7c2')
     
